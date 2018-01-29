@@ -18,9 +18,11 @@
 # Predict:
 #   1. Use the generated probability table to calculate the document class for all the instances in the test set.
 
-import pyspark
+
+from pyspark import SparkConf, SparkContext
+from pyspark.sql import SparkSession
 import argparse
-from nltk.stem.snowball.EnglishStemmer import stem
+from nltk import stem
 
 class preprocess:
     def __init__(self, x_train_path, x_test_path, y_train_path, spark_context, stopwords_path):
@@ -29,9 +31,9 @@ class preprocess:
         self.y_train_path = y_train_path
         self.sc = spark_context
         self.stopwords = self.sc.broadcast(open(stopwords_path, "r").readlines())
-        self.x_train = self.sc.textFile(self.x_train_path)
-        self.x_test = self.sc.textFile(self.x_test_path)
-        self.y_train = self.sc.textFile(self.y_train_path)
+        self.x_train = self.sc.textFile(self.x_train_path).cache()
+        self.x_test = self.sc.textFile(self.x_test_path).cache()
+        self.y_train = self.sc.textFile(self.y_train_path).cache)()
 
     def rem_punct(self, row):
         """
@@ -54,12 +56,12 @@ class preprocess:
         out = [i for i in row if any(j.isdigit() for j in i)]
         return out
 
-    def remove_stop_words(self, row, stopwords):
+    def remove_stop_words(self, row):
         """
         Take a list of words.
         Drop the words that are in the stopwords list.
         """
-        out = [word for word in row if word not in stopwords]
+        out = [word for word in row if word not in self.stopwords.value]
         return out
 
     def stem_words(self, row):
@@ -70,20 +72,38 @@ class preprocess:
         out = [stem(word) for word in row]
         return out
 
-    def clean_row(self, row, stopwords):
-        out1 = self.rem_punct(row)
-        out2 = self.rem_num(out1)
-        out3 = self.remove_stop_words(out2, stopwords)
-        out4 = self.stem_words(out3)
-        return out4
+    def clean_row(self, row):
+        out = self.rem_punct(row)
+        out = self.rem_num(out)
+        out = self.remove_stop_words(out)
+        out = self.stem_words(out)
+        return out
 
-    def clean(self, rdd, stopwords):
-        out = self.sc.map(lambda rdd: clean_row(rdd, stopwords))
-    def get_vocab(self, row):
+    def clean_train(self):
+        out = self.x_train.map(lambda row: self.clean_row(row))
+        out1 = out.collect()
+        return out1
+    def clean_test(self):
+        out = self.x_test.map(lambda row: self.clean_row(row))
+
+        return out
+    def get_vocab(self, rdd):
         pass
     def get_counts(self, row):
         pass
     def dupe(self, x_train, y_train):
         pass
 
-if __name__ == '__main__':
+x_train_path = "./data/X_train_vsmall.txt"
+x_test_path = "./data/X_test_vsmall.txt"
+y_train_path = "./data/y_train_vsmall.txt"
+stopwords_path = "stopwords.txt"
+conf = SparkConf().setMaster("local").setAppName("orion-p1")
+sc = SparkContext( conf = conf)
+pp = preprocess(x_train_path, x_test_path, y_train_path, sc, stopwords_path)
+cleaned_train = pp.clean_train()
+print(cleaned_train)
+
+    # temp = cleaned_train.collect()
+    # print(temp)
+    # cleaned_test = pp.clean_test()
