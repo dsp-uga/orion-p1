@@ -126,5 +126,5 @@ if __name__ == '__main__':
     x_train_class = x_train_count.zip(y_cat)
     x_train_class = x_train_class.map(lambda row: ([row[0]], row[1])).flatMapValues(f)
     x_train_class = x_train_class.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
-
-    # print(x_train_class)
+    x_train_class = x_train_class.map(lambda row: (row[1], row[0][0]))
+    print(x_train_class.take(3))
