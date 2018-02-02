@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: orion
+Version: 0.1.0.dev0
+Summary: Document classification at scale with Spark
+Home-page: https://github.com/dsp-uga/orion-p1
+Author: Raj Sivakumar
+Author-email: raji.a.siva@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
