@@ -23,6 +23,7 @@ from pyspark.sql import SparkSession, SQLContext, Row
 # import pyspark.implicits._
 import argparse
 import string
+import numpy as np
 from nltk.stem import WordNetLemmatizer
 
 def rem_punct(row):
@@ -91,10 +92,11 @@ def get_count(row):
     for word in VOCAB.value:
         list_out.append(row.count(word)+1)
     return list_out
-
-def f(x):
+def get_val(x):
     return x
-
+def get_prob(row):
+    out =[num/TOTAL_COUNTS.value[i] for i, num in enumerate(row)]
+    return out
 def get_paths():
     pass
 
@@ -123,8 +125,21 @@ if __name__ == '__main__':
     VOCAB = sc.broadcast(train_vocab.union(test_vocab).distinct().collect())
 
     x_train_count = clean_x_train.map(lambda row: get_count(row))
-    x_train_class = x_train_count.zip(y_cat)
-    x_train_class = x_train_class.map(lambda row: ([row[0]], row[1])).flatMapValues(f)
-    x_train_class = x_train_class.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
-    x_train_class = x_train_class.map(lambda row: (row[1], row[0][0]))
-    print(x_train_class.take(3))
+    x_train_count = x_train_count.zip(y_cat).map(lambda row: ([row[0]], row[1])).flatMapValues(get_val)
+    x_train_count = x_train_count.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
+    x_train_count = x_train_count.map(lambda row: (row[1], row[0][0]))
+
+    NUM_DOCS = x_train_count.count()
+    NUM_CAT = x_train_count.countByKey()
+
+    P_CCAT = sc.broadcast(NUM_CAT['CCAT']/NUM_DOCS)
+    P_ECAT = sc.broadcast(NUM_CAT['ECAT']/NUM_DOCS)
+    P_GCAT = sc.broadcast(NUM_CAT['GCAT']/NUM_DOCS)
+    P_MCAT = sc.broadcast(NUM_CAT['MCAT']/NUM_DOCS)
+
+    x_train_class = x_train_count.reduceByKey(lambda a,b: np.add(a,b).tolist())
+    TOTAL_COUNTS = sc.broadcast(x_train_class.map(lambda row: row[1]).reduce(np.add).tolist())
+
+    x_train_prob = x_train_class.map(lambda x: (x[0], get_prob(x[1])))
+
+    
