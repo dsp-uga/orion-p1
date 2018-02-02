@@ -12,9 +12,11 @@ The flow of the program is as follows:
   3. Get list of every unique word across all documents to make a feature vector. (save)
   4. Get dataframe where each row is each document and each column is the words for train set. Amend with new words in test.
   5. +1 to all counts
-  6. Calculate TF-IDF for all values in each document
-  7. Calculate count table where rows are classes
-  8. Calculate probabilities by class.
+  6. Calculate count table where rows are classes
+  7. Calculate probabilities by class.
 
 Predict:
   1. Use the generated probability table to calculate the document class for all the instances in the test set.
+
+
+While we are able run our code successfully with the smaller `vsmall` data, we are unable to make a complete run on Google Cloud. We are unable to diagnose the errors as they seem to occur at various stage and are inconsistent despite not changing out code in significant way. We hope to examine this further soon.
