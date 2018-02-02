@@ -156,53 +156,51 @@ def get_paths():
     args = vars(parser.parse_args())
     return args
 
-def main():
-    sc = SparkContext(master='local')
 
-    # args = get_paths()
+sc = SparkContext()
 
-    x_train = sc.textFile("gs://uga-dsp/project1/train/X_train_large.txt")
-    x_test= sc.textFile("gs://uga-dsp/project1/test/X_test_large.txt")
-    y_train = sc.textFile("gs://uga-dsp/project1/train/y_train_large.txt")
+# args = get_paths()
 
-    STOPWORDS = sc.broadcast(nltk.corpus.stopwords.words('english'))
-    # Thanks @Chris Barrick for sharing the heads up about nltk stopwords
+x_train = sc.textFile("gs://orion-p1/data/X_train_large.txt")
+x_test= sc.textFile("gs://orion-p1/data/X_test_large.txt")
+y_train = sc.textFile("gs://orion-p1/data/y_train_large.txt")
 
-    clean_x_train = x_train.map(lambda row: clean_row(row, STOPWORDS.value))
-    clean_x_test = x_test.map(lambda row: clean_row(row, STOPWORDS.value))
-    y_cat = y_train.map(lambda row: row.split(","))
+STOPWORDS = sc.broadcast(nltk.corpus.stopwords.words('english'))
+# Thanks @Chris Barrick for sharing the heads up about nltk stopwords
 
-    train_vocab = clean_x_train.flatMap(lambda row: row).distinct()
-    test_vocab = clean_x_test.flatMap(lambda row: row).distinct()
-    VOCAB = sc.broadcast(train_vocab.union(test_vocab).distinct().collect())
+clean_x_train = x_train.map(lambda row: clean_row(row, STOPWORDS.value))
+clean_x_test = x_test.map(lambda row: clean_row(row, STOPWORDS.value))
+y_cat = y_train.map(lambda row: row.split(","))
 
-    x_train_count = clean_x_train.map(lambda row: get_count(row, VOCAB.value))
-    x_train_count = x_train_count.zip(y_cat).map(lambda row: ([row[0]], row[1])).flatMapValues(get_val)
-    x_train_count = x_train_count.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
-    x_train_count = x_train_count.map(lambda row: (row[1], row[0][0]))
+train_vocab = clean_x_train.flatMap(lambda row: row).distinct()
+test_vocab = clean_x_test.flatMap(lambda row: row).distinct()
+VOCAB = sc.broadcast(train_vocab.union(test_vocab).distinct().collect())
 
-    NUM_DOCS = x_train_count.count()
-    NUM_CAT = x_train_count.countByKey()
+x_train_count = clean_x_train.map(lambda row: get_count(row, VOCAB.value))
+x_train_count = x_train_count.partitionBy(2)
+y_cat = y_cat.partitionBy(2)
+x_train_count = x_train_count.zip(y_cat).map(lambda row: ([row[0]], row[1])).flatMapValues(get_val)
+x_train_count = x_train_count.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
+x_train_count = x_train_count.map(lambda row: (row[1], row[0][0]))
 
-    P_CCAT = sc.broadcast(NUM_CAT['CCAT']/NUM_DOCS)
-    P_ECAT = sc.broadcast(NUM_CAT['ECAT']/NUM_DOCS)
-    P_GCAT = sc.broadcast(NUM_CAT['GCAT']/NUM_DOCS)
-    P_MCAT = sc.broadcast(NUM_CAT['MCAT']/NUM_DOCS)
+NUM_DOCS = x_train_count.count()
+NUM_CAT = x_train_count.countByKey()
 
-    x_train_class = x_train_count.reduceByKey(lambda a,b: np.add(a,b).tolist())
-    TOTAL_COUNTS = sc.broadcast(x_train_class.map(lambda row: row[1]).reduce(np.add).tolist())
+P_CCAT = sc.broadcast(NUM_CAT['CCAT']/NUM_DOCS)
+P_ECAT = sc.broadcast(NUM_CAT['ECAT']/NUM_DOCS)
+P_GCAT = sc.broadcast(NUM_CAT['GCAT']/NUM_DOCS)
+P_MCAT = sc.broadcast(NUM_CAT['MCAT']/NUM_DOCS)
 
-    x_train_prob = x_train_class.map(lambda x: (x[0], get_prob(x[1])))
-    PW_CCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='CCAT').map(lambda row: row[1]).collect())
-    PW_ECAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='ECAT').map(lambda row: row[1]).collect())
-    PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]).collect())
-    PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]).collect())
+x_train_class = x_train_count.reduceByKey(lambda a,b: np.add(a,b).tolist())
+TOTAL_COUNTS = sc.broadcast(x_train_class.map(lambda row: row[1]).reduce(np.add).tolist())
 
-    x_test_count = clean_x_test.map(lambda row: get_test_count(row, VOCAB.value))
+x_train_prob = x_train_class.map(lambda x: (x[0], get_prob(x[1])))
+PW_CCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='CCAT').map(lambda row: row[1]).collect())
+PW_ECAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='ECAT').map(lambda row: row[1]).collect())
+PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]).collect())
+PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]).collect())
 
-    predictions = x_test_count.map(lambda row: predict(row))
+x_test_count = clean_x_test.map(lambda row: get_test_count(row, VOCAB.value))
 
-    predictions.foreach(print)
-
-if __name__ == '__main__':
-    main()
+predictions = x_test_count.map(lambda row: predict(row))
+predictions.foreach(print)
