@@ -100,9 +100,9 @@ def get_test_count(row):
     list_out = []
     word_count =0
     for word in VOCAB.value:
-        if row.count(word) >0:
+        if row.count(word)>0:
             word_count = 1
-        else
+        else:
             word_count = 0
         list_out.append(word_count)
     return list_out
@@ -112,30 +112,39 @@ def get_prob(row):
     out =[num/TOTAL_COUNTS.value[i] for i, num in enumerate(row)]
     return out
 def predict(row):
-    pass
+    p_list = [CCAT_prob(row), ECAT_prob(row), GCAT_prob(row), MCAT_prob(row)]
+    idx = np.argmax(p_list)
+    if idx == 0:
+        return 'CCAT'
+    elif idx == 1:
+        return 'ECAT'
+    elif idx == 2:
+        return 'GCAT'
+    elif idx == 3:
+        return 'MCAT'
+
 def CCAT_prob(row):
-    prob_vec = [ for val, p in zip(row,PW_CCAT)]
-    pass
-def ECAT_prob(word):
-    pass
-def GCAT_prob(word):
-    pass
-def MCAT_prob(word):
-    pass
+    prob_vec = [log(p_q(val,p)) for val, p in zip(row, PW_CCAT.value)]
+    return sum(prob_vec) + log(P_CCAT.value)
+def ECAT_prob(row):
+    prob_vec = [log(p_q(val,p)) for val, p in zip(row, PW_ECAT.value)]
+    return sum(prob_vec) + log(P_ECAT.value)
+def GCAT_prob(row):
+    prob_vec = [log(p_q(val,p)) for val, p in zip(row, PW_GCAT.value)]
+    return sum(prob_vec) + log(P_GCAT.value)
+def MCAT_prob(row):
+    prob_vec = [log(p_q(val,p)) for val, p in zip(row, PW_MCAT.value)]
+    return sum(prob_vec) + log(P_MCAT.value)
 def p_q(num, p):
     if num == 0:
         return 1-p
-    else
+    else:
         return p
 def get_paths():
     pass
 
 if __name__ == '__main__':
     sc = SparkContext(master = 'local')
-    spark = SparkSession.builder \
-          .appName("Learning Apach Spark") \
-          .config("spark.some.config.option", "some-value") \
-          .getOrCreate()
 
     x_train = sc.textFile("./data/X_train_vsmall.txt")
     x_test= sc.textFile("./data/X_test_vsmall.txt")
@@ -172,11 +181,13 @@ if __name__ == '__main__':
     TOTAL_COUNTS = sc.broadcast(x_train_class.map(lambda row: row[1]).reduce(np.add).tolist())
 
     x_train_prob = x_train_class.map(lambda x: (x[0], get_prob(x[1])))
-    PW_CCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='CCAT').map(lambda row: row[1]))
-    PW_ECAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='ECAT').map(lambda row: row[1]))
-    PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]))
-    PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]))
+    PW_CCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='CCAT').map(lambda row: row[1]).collect())
+    PW_ECAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='ECAT').map(lambda row: row[1]).collect())
+    PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]).collect())
+    PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]).collect())
 
     x_test_count = clean_x_test.map(lambda row: get_test_count(row))
 
     predictions = x_test_count.map(lambda row: predict(row))
+
+    print(predictions.collect())
