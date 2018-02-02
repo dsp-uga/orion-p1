@@ -25,6 +25,7 @@ import argparse
 import string
 import numpy as np
 from nltk.stem import WordNetLemmatizer
+from math import log
 
 def rem_punct(row):
     """
@@ -92,11 +93,40 @@ def get_count(row):
     for word in VOCAB.value:
         list_out.append(row.count(word)+1)
     return list_out
+def get_test_count(row):
+    """
+    Take a row and transform into a series of tuples: (word, count)
+    """
+    list_out = []
+    word_count =0
+    for word in VOCAB.value:
+        if row.count(word) >0:
+            word_count = 1
+        else
+            word_count = 0
+        list_out.append(word_count)
+    return list_out
 def get_val(x):
     return x
 def get_prob(row):
     out =[num/TOTAL_COUNTS.value[i] for i, num in enumerate(row)]
     return out
+def predict(row):
+    pass
+def CCAT_prob(row):
+    prob_vec = [ for val, p in zip(row,PW_CCAT)]
+    pass
+def ECAT_prob(word):
+    pass
+def GCAT_prob(word):
+    pass
+def MCAT_prob(word):
+    pass
+def p_q(num, p):
+    if num == 0:
+        return 1-p
+    else
+        return p
 def get_paths():
     pass
 
@@ -107,9 +137,9 @@ if __name__ == '__main__':
           .config("spark.some.config.option", "some-value") \
           .getOrCreate()
 
-    x_train = sc.textFile("./data/X_train_vsmall.txt").cache()
-    x_test= sc.textFile("./data/X_test_vsmall.txt").cache()
-    y_train = sc.textFile("./data/y_train_vsmall.txt").cache()
+    x_train = sc.textFile("./data/X_train_vsmall.txt")
+    x_test= sc.textFile("./data/X_test_vsmall.txt")
+    y_train = sc.textFile("./data/y_train_vsmall.txt")
     stopwords_path = "stopwords.txt"
 
     with open(stopwords_path) as s:
@@ -119,6 +149,7 @@ if __name__ == '__main__':
     clean_x_train = x_train.map(lambda row: clean_row(row))
     clean_x_test = x_test.map(lambda row: clean_row(row))
     y_cat = y_train.map(lambda row: row.split(","))
+    STOPWORDS.unpersist()
 
     train_vocab = clean_x_train.flatMap(lambda row: row).distinct()
     test_vocab = clean_x_test.flatMap(lambda row: row).distinct()
@@ -141,5 +172,11 @@ if __name__ == '__main__':
     TOTAL_COUNTS = sc.broadcast(x_train_class.map(lambda row: row[1]).reduce(np.add).tolist())
 
     x_train_prob = x_train_class.map(lambda x: (x[0], get_prob(x[1])))
+    PW_CCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='CCAT').map(lambda row: row[1]))
+    PW_ECAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='ECAT').map(lambda row: row[1]))
+    PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]))
+    PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]))
 
-    
+    x_test_count = clean_x_test.map(lambda row: get_test_count(row))
+
+    predictions = x_test_count.map(lambda row: predict(row))
