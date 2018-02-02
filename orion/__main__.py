@@ -24,8 +24,11 @@ from pyspark.sql import SparkSession, SQLContext, Row
 import argparse
 import string
 import numpy as np
-from nltk.stem import WordNetLemmatizer
+# from nltk.stem import WordNetLemmatizer
+# from nltk.corpus import stopwords
+import nltk
 from math import log
+
 
 def rem_punct(row):
     """
@@ -72,34 +75,34 @@ def lemma_words(row):
     Take a list of words.
     Change suffix of words from NLTK WordNetLemmatizer
     """
-    lemmatizer = WordNetLemmatizer()
+    lemmatizer = nltk.stem.WordNetLemmatizer()
     out = [lemmatizer.lemmatize(word) for word in row]
     return out
 
-def clean_row(row):
+def clean_row(row, stopwords):
     """
     Take a row and perform all cleaning functions on it
     """
     out = rem_punct(row)
     out = rem_num(out)
     out = lemma_words(out)
-    out = remove_stop_words(out, STOPWORDS.value)
+    out = remove_stop_words(out, stopwords)
     return out
-def get_count(row):
+def get_count(row, vocab):
     """
     Take a row and transform into a series of tuples: (word, count)
     """
     list_out = []
-    for word in VOCAB.value:
+    for word in vocab:
         list_out.append(row.count(word)+1)
     return list_out
-def get_test_count(row):
+def get_test_count(row, vocab):
     """
     Take a row and transform into a series of tuples: (word, count)
     """
     list_out = []
     word_count =0
-    for word in VOCAB.value:
+    for word in vocab:
         if row.count(word)>0:
             word_count = 1
         else:
@@ -141,30 +144,39 @@ def p_q(num, p):
     else:
         return p
 def get_paths():
-    pass
+    parser = argparse.ArgumentParser()
+    # adapted from argparse code in p0_key.py (authored by Shannon Quinn)
+    parser.add_argument("-x", "--train", required = True,
+        help = "File containing training documents")
+    parser.add_argument("-t", "--test", required = True,
+        help = "File containing test documents")
+    parser.add_argument("-y", "--labels", required = True,
+        help = "Directory containing the books / text files.")
 
-if __name__ == '__main__':
-    sc = SparkContext(master = 'local')
+    args = vars(parser.parse_args())
+    return args
 
-    x_train = sc.textFile("./data/X_train_vsmall.txt")
-    x_test= sc.textFile("./data/X_test_vsmall.txt")
-    y_train = sc.textFile("./data/y_train_vsmall.txt")
-    stopwords_path = "stopwords.txt"
+def main():
+    sc = SparkContext(master='local')
 
-    with open(stopwords_path) as s:
-        sw = s.readlines()
-    STOPWORDS = sc.broadcast([i.strip() for i in sw])
+    # args = get_paths()
 
-    clean_x_train = x_train.map(lambda row: clean_row(row))
-    clean_x_test = x_test.map(lambda row: clean_row(row))
+    x_train = sc.textFile("gs://uga-dsp/project1/train/X_train_large.txt")
+    x_test= sc.textFile("gs://uga-dsp/project1/test/X_test_large.txt")
+    y_train = sc.textFile("gs://uga-dsp/project1/train/y_train_large.txt")
+
+    STOPWORDS = sc.broadcast(nltk.corpus.stopwords.words('english'))
+    # Thanks @Chris Barrick for sharing the heads up about nltk stopwords
+
+    clean_x_train = x_train.map(lambda row: clean_row(row, STOPWORDS.value))
+    clean_x_test = x_test.map(lambda row: clean_row(row, STOPWORDS.value))
     y_cat = y_train.map(lambda row: row.split(","))
-    STOPWORDS.unpersist()
 
     train_vocab = clean_x_train.flatMap(lambda row: row).distinct()
     test_vocab = clean_x_test.flatMap(lambda row: row).distinct()
     VOCAB = sc.broadcast(train_vocab.union(test_vocab).distinct().collect())
 
-    x_train_count = clean_x_train.map(lambda row: get_count(row))
+    x_train_count = clean_x_train.map(lambda row: get_count(row, VOCAB.value))
     x_train_count = x_train_count.zip(y_cat).map(lambda row: ([row[0]], row[1])).flatMapValues(get_val)
     x_train_count = x_train_count.filter(lambda row: row[1]=='CCAT' or row[1]=='ECAT' or row[1]=='GCAT' or row[1]=='MCAT')
     x_train_count = x_train_count.map(lambda row: (row[1], row[0][0]))
@@ -186,8 +198,11 @@ if __name__ == '__main__':
     PW_GCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='GCAT').map(lambda row: row[1]).collect())
     PW_MCAT = sc.broadcast(x_train_prob.filter(lambda row: row[1]=='MCAT').map(lambda row: row[1]).collect())
 
-    x_test_count = clean_x_test.map(lambda row: get_test_count(row))
+    x_test_count = clean_x_test.map(lambda row: get_test_count(row, VOCAB.value))
 
     predictions = x_test_count.map(lambda row: predict(row))
 
-    print(predictions.collect())
+    predictions.foreach(print)
+
+if __name__ == '__main__':
+    main()
